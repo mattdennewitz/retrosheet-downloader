@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func worker(id int, years <-chan int, results chan<- string, v bool) {
+func worker(id int, years <-chan int, results chan<- string) {
 	for year := range years {
 		/* create file */
 		fn := fmt.Sprintf("dl/%deve.zip", year)
