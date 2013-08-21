@@ -6,23 +6,19 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"sync"
 	"time"
 )
 
-func worker(id int, years <-chan int, wg sync.WaitGroup) {
+func worker(id int, years <-chan int, results chan<- string, v bool) {
 	for year := range years {
-		wg.Add(1)
-
 		/* create file */
-		fn := fmt.Sprintf("dl/%d.zip", year)
-
+		fn := fmt.Sprintf("dl/%deve.zip", year)
 		out_f, err := os.Create(fn)
 		defer out_f.Close()
 
 		if err != nil {
-			fmt.Printf("Could not create %d.zip: %s\n", year, err.Error())
-			continue
+		 	fmt.Printf("Could not create %d.zip: %s\n", year, err.Error())
+		 	continue
 		}
 
 		/* download archive */
@@ -45,7 +41,7 @@ func worker(id int, years <-chan int, wg sync.WaitGroup) {
 
 		fmt.Printf("+ [%d] Saved %s\n", id, url)
 
-		wg.Done()
+		results <- fn
 	}
 }
 
@@ -72,8 +68,6 @@ func main() {
 	flag.BoolVar(&v, "v", false, "Enable verbose output")
 	flag.Parse()
 
-	years := make(chan int)
-
 	/* display usage info */
 	welcome_msg := `
 Retrosheet Downloader
@@ -91,12 +85,18 @@ Config:
 	 create worker threads
 	 */
 
- 	var wg sync.WaitGroup
+	s_year = minmax(s_year, 1921, this_year)
+	e_year = minmax(e_year, s_year, this_year)
+	dx := e_year - s_year
+	fmt.Println(dx)
+
+	years := make(chan int, dx)
+	results := make(chan string, dx)
 
 	wrx = minmax(wrx, 1, 10)
 
 	for i := 0; i < wrx; i ++ {
-		go worker(i, years, wg)
+		go worker(i, years, results)
 	}
 
 
@@ -104,29 +104,30 @@ Config:
 	 feed work into threads
 	 */
 
-	s_year = minmax(s_year, 1921, this_year)
-	e_year = minmax(e_year, s_year, this_year)
-
 	/* remember that not all years are available */
-	// skippable_years := [14]int{
-	// 	1923, 1924, 1925, 1926, 1928, 1929,
-  	// 	1930, 1932, 1933, 1934, 1935, 1936, 1937, 1939}
+	skippable_years := [14]int{
+	  	1923, 1924, 1925, 1926, 1928, 1929,
+  	  	1930, 1932, 1933, 1934, 1935, 1936, 1937, 1939}
 
-	// Y:
+	 Y:
 	for year := s_year; year < e_year; year++ {
-		// for sy := range skippable_years {
-		// 	if year == sy {
-		// 		continue Y
-		// 	}
-		// }
+		for sy := range skippable_years {
+		 	if year == sy {
+		 		continue Y
+		 	}
+		}
 
 		years <- year
-		fmt.Println(year)
+		fmt.Println("Queued ", year)
 	}
 
 	/* no more work to be done across this channel */
 	close(years)
 
-	/* wait until complete */
-	wg.Wait()
+	/* drain work pool */
+	for year := s_year; year < e_year; year++ {
+		<-results
+	}
+
+	fmt.Println("done")
 }
